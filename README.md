@@ -14,6 +14,12 @@ preserving all formatting information.
 - **Easy to parse**: Simple line-by-line structure, ideal for implementation
 - **Preserves ANSI art**: All color and effect information is retained
 
+## Example
+
+<img src="./neotex-format.png" align="center"/>
+
+This example generated from this [neotex example file](./neotex-format.neo)
+
 ## Format Structure
 
 Each line in a `.neo` file follows this structure:
@@ -22,38 +28,60 @@ Each line in a `.neo` file follows this structure:
 <TEXT> | <METADATA_AND_STYLES>
 ```
 
-- **Left part**: The text content (Unicode characters)
-- **Separator**: The `|` (pipe) character
-- **Right part**: Metadata and style sequences
+- **Left part**: the text content (Unicode characters)
+- **Separator**: the exact sequence `|` (space, pipe, space)
+- **Right part**: metadata and style sequences
+
+Required rules:
+
+- The `|` is placed at column `yy` defined by `!TWxx/yy`; pad the text so the
+  separator lands there.
+- The first line's right part starts with `!V…; !TW…; !NL…;` in that order, with
+  a required space after each `;`. Subsequent lines may omit these labels.
+- A space is required after every `;` and after every `,`; no space after `:`.
+- Style sequences are optional.
 
 ### Simple Example
 
 ```
-Hello World | 1:FR; 7:FG;
+Hello World | !V1; !TW11/11; !NL1; 1:FR; 7:FG;
 ```
 
 This line displays "Hello World" with:
 
-- Position 1: "Hello " in bright red (FR = Foreground Red bright)
+- Position 1: "Hello" in bright red (FR = Foreground Red bright)
 - Position 7: "World" in bright green (FG = Foreground Green bright)
 
 ## Complete Specification
 
 ### 1. Metadata
 
-Metadata starts with `!` and appears at the beginning of the right part
-(typically on the first line, but can also be added on other lines).
+Metadata starts with `!`. Only the first line must begin its right part with the
+three required labels `!V…; !TW…; !NL…;` (in that order, with a space after each
+`;`). Subsequent lines may include optional metadata or none at all.
 
-| Metadata     | Format       | Description                                 |
-| ------------ | ------------ | ------------------------------------------- |
-| `!V<n>`      | `!V1;`       | Neotex format version                       |
-| `!TW<t>/<m>` | `!TW80/120;` | Width: `t` = trimmed width, `m` = max width |
-| `!NL<n>`     | `!NL25;`     | Total number of lines                       |
+| Metadata        | Format                         | Description                                                 |
+| --------------- | ------------------------------ | ----------------------------------------------------------- |
+| `!V<semver>`    | `!V1.0.0;`                     | Neotex format version (accepts `1`, `1.2`, or full `1.0.0`) |
+| `!TW<t>/<m>`    | `!TW80/120;`                   | Width: `t` = trimmed width, `m` = max width                 |
+| `!NL<n>`        | `!NL25;`                       | Total number of lines                                       |
+| `!ST<text>`     | `!ST<My Art>;`                 | SAUCE title (stored on a dedicated metadata line)           |
+| `!SA<text>`     | `!SA<Author>;`                 | SAUCE author                                                |
+| `!SG<text>`     | `!SG<Group>;`                  | SAUCE group                                                 |
+| `!SD<YYYYMMDD>` | `!SD<20260119>;`               | SAUCE creation date                                         |
+| `!SF<text>`     | `!SF<Web437_ToshibaSat_8x14>;` | SAUCE font info (TInfoS)                                    |
+| `!SI`           | `!SI;`                         | SAUCE iCE colors / NonBlink flag                            |
+
+Only line 1 enforces the `!V…; !TW…; !NL…;` prefix; other lines can carry the
+optional metadata above (including SAUCE tags) or simply style sequences.
+
+`splitans` writes SAUCE labels on a trailing empty line; width/height are still
+carried by `!TW`/`!NL`.
 
 **Example:**
 
 ```
-Hello | !V1; !TW80/80; !NL10; 1:FR;
+Hello | !V1; !TW5/5; !NL1; 1:FR;
 ```
 
 ### 2. Style Sequences
@@ -67,6 +95,9 @@ General format of a sequence:
 - **POSITION**: Character index (1-based) where the style applies
 - **STYLES**: List of style codes separated by commas
 - Each sequence ends with `;`
+- A space is required after each `;` (except end of line) and after each `,`; no
+  space after `:`.
+- Sequences are optional: a line may have none.
 
 ### 3. Color Codes
 
@@ -122,8 +153,19 @@ B<RRGGBB>   Background RGB (hex)
 
 **Examples:**
 
-- `FFF0080`: Foreground RGB(255, 0, 128) - pink
+- `FF0080`: Foreground RGB(255, 0, 128) - pink
 - `B00FF00`: Background RGB(0, 255, 0) - green
+
+#### Link Hover Colors
+
+Use the same formats as foreground/background but prefix with `HF` (hover
+foreground) or `HB` (hover background). Hover colors persist until changed and
+apply when a renderer supports pointer hover on hyperlinks.
+
+- `HFY`: Hover foreground bright yellow
+- `HBk`: Hover background black
+- `HF123`: Hover foreground indexed color 123
+- `HB00FF00`: Hover background RGB green
 
 ### 4. Effect Codes
 
@@ -138,88 +180,99 @@ B<RRGGBB>   Background RGB (hex)
 > **Note**: There is no Bold effect. The "bright" version of a color (uppercase)
 > replaces this effect.
 
-### 5. Special Code
+### 5. Hyperlink Codes
+
+Hyperlinks (OSC 8) are encoded alongside other styles:
+
+| Code       | Description                                               |
+| ---------- | --------------------------------------------------------- |
+| `HL:<url>` | Start hyperlink at this position (URL wrapped in `<...>`) |
+| `Hl`       | End the current hyperlink                                 |
+
+- Pair with `HF`/`HB` hover colors to define hover palette; hover colors are not
+  reset by `R0`.
+- Hyperlink codes can be combined with other styles at the same position.
+
+**Example:**
+
+```
+Click me | !V1; !TW80/80; !NL101; 1:HL:<https://example.com>, FG, HFY, HBk; 9:Hl;
+```
+
+### 6. Special Code
 
 | Code | Description                               |
 | ---- | ----------------------------------------- |
 | `R0` | Full reset (resets all styles to default) |
 
-## Formal Grammar (BNF)
+## Developer Guide (implementers)
 
-```bnf
-<line>        ::= <text> " | " <right_part>
-<right_part>  ::= <metadata>* <sequence>*
+### Line layout
 
-<metadata>    ::= "!" <meta_type> ";"
-<meta_type>   ::= "V" <number>
-                | "TW" <number> "/" <number>
-                | "NL" <number>
+- Each line is `<TEXT> | <RIGHT_PART>` with the exact separator `|` (space,
+  pipe, space).
+- The `|` must be placed at the column declared by `!TWt/m`; pad the left text
+  accordingly.
+- A space is mandatory after every `;` and `,` (except at end of line). No space
+  after `:`.
 
-<sequence>    ::= <position> ":" <styles> ";"
-<position>    ::= <number>
-<styles>      ::= <style> ("," <style>)*
+### First line header (mandatory)
 
-<style>       ::= <color> | <effect> | "R0"
-<color>       ::= <fg_color> | <bg_color>
-<fg_color>    ::= "F" <color_value>
-<bg_color>    ::= "B" <color_value>
-<color_value> ::= <ansi_color> | <indexed> | <rgb>
-<ansi_color>  ::= "k" | "K" | "r" | "R" | "g" | "G" | "y" | "Y"
-                | "b" | "B" | "m" | "M" | "c" | "C" | "w" | "W" | "D"
-<indexed>     ::= <digit> <digit>? <digit>?   ; 0-255
-<rgb>         ::= <hex><hex><hex><hex><hex><hex>   ; RRGGBB
+- The right part of line 1 must start with: `!V…; !TWt/m; !NLn;`
+- Keep this exact order and a space after each `;`.
 
-<effect>      ::= "E" <effect_char>
-<effect_char> ::= "M" | "m" | "I" | "i" | "U" | "u" | "B" | "b" | "R" | "r"
+### Metadata (two families)
 
-<number>      ::= <digit>+
-<digit>       ::= "0" | "1" | ... | "9"
-<hex>         ::= <digit> | "A" | "B" | "C" | "D" | "E" | "F"
-                         | "a" | "b" | "c" | "d" | "e" | "f"
-```
+- Simple key/value: `!KEYvalue;` (no colon). Example: `!TW80/120;`, `!NL25;`,
+  `!V1.0.0;`.
+- SAUCE tags (values wrapped in `< >`):
+  `!ST<title>; !SA<author>; !SG<group>; !SD<YYYYMMDD>; !SF<font>; !SI;`
+- Optional labels can appear on any line; only `!V`, `!TW`, `!NL` are mandatory
+  on the first line.
 
-## Parsing Algorithm
+### Style sequences
 
-Here are the steps to implement a Neotex reader:
+- Syntax: `position:STYLE1, STYLE2;` (positions are 1-based).
+- Styles are comma-separated with a required space after each comma; each
+  sequence ends with `;` plus a space unless end of line.
 
-```
-1. For each line in the file:
-   a. Split the line at " | " (positioned at !TW)
-      - Left = text
-      - Right = metadata + styles
+### Style codes (recap)
 
-   b. Parse the right part:
-      - Split by ";"
-      - For each segment:
-        - If starts with "!" -> metadata
-        - Otherwise -> style sequence
+- Colors: `Fk/FR`… for 16 colors (foreground), `Bk`… for background; indexed
+  `F123`/`B200`; RGB `F00FF00`/`BFF0080`; hover `HF…`/`HB…`.
+- Effects: `EM` (dim), `EI` (italic), `EU` (underline), `EB` (blink), `ER`
+  (reverse); lowercase versions disable (`Em`/`Ei`/`Eu`/`Eb`/`Er`).
+- Links: `HL:<url>` starts a link (URL inside `< >`); `Hl` ends it. Combine with
+  hover colors if desired.
+- Reset: `R0` resets all styles to defaults.
 
-   c. For each style sequence:
-      - Split by ":"
-      - Left = position (integer)
-      - Right = list of styles (split by ",")
+### Parsing checklist
 
-   d. For each style:
-      - Trim whitespace
-      - Identify the type (color, effect, reset)
-      - Apply the style starting from the position
-```
+1. Split each line at `|` (space, pipe, space) using the column from `!TW` to
+   position the separator.
+2. On the first line, read `!V…; !TW…; !NL…;` in that order; they must be
+   present.
+3. Split the right part on `;` (semicolon + space) to list entries. Each entry
+   starting with `!` is metadata; others are style sequences.
+4. For a style sequence, split on `:` (no spaces). Left = position; right =
+   styles split on `,` (comma + space).
+5. Apply styles in order; `R0` resets state. Hover colors persist until changed.
 
 ## Annotated Complete Example
 
 ```
-Hello  | !V1; !TW6/80; !NL1; 1:FR, Bg; 4:R0; 6:FG;
+Hello | !V1; !TW80/80; !NL101; 1:FR, Bg; 4:R0; 6:FG;
 ```
 
 **Parsing:**
 
 1. Text: `Hello`
-2. Metadata:
-   - `!V1`: Version 1
-   - `!TW6/80`: 6 characters wide from an initial 80 character width
-   - `!NL1`: 1 line
+2. Metadata (required, in this order):
+   - `!V1`
+   - `!TW80/80`
+   - `!NL101`
 
-3. Styles:
+3. Styles (sequences optional):
    - Position 1: `FR` (bright red), `Bg` (green background)
    - Position 4: `R0` (reset)
    - Position 6: `FG` (bright green)
