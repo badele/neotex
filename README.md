@@ -60,6 +60,11 @@ Metadata starts with `!`. Only the first line must begin its right part with the
 three required labels `!V…; !TW…; !NL…;` (in that order, with a space after each
 `;`). Subsequent lines may include optional metadata or none at all.
 
+Values may be written with or without an equals sign: `!KEYvalue;` or
+`!KEY=value;`. When values are wrapped in `< >`, both `!KEY<value>;` and
+`!KEY=<value>;` are valid. Use `< >` for values containing spaces or special
+characters.
+
 | Metadata        | Format                         | Description                                                 |
 | --------------- | ------------------------------ | ----------------------------------------------------------- |
 | `!V<semver>`    | `!V1.0.0;`                     | Neotex format version (accepts `1`, `1.2`, or full `1.0.0`) |
@@ -71,6 +76,9 @@ three required labels `!V…; !TW…; !NL…;` (in that order, with a space afte
 | `!SD<YYYYMMDD>` | `!SD<20260119>;`               | SAUCE creation date                                         |
 | `!SF<text>`     | `!SF<Web437_ToshibaSat_8x14>;` | SAUCE font info (TInfoS)                                    |
 | `!SI`           | `!SI;`                         | SAUCE iCE colors / NonBlink flag                            |
+
+Palette entries are also metadata: use `!P<idx>=RRGGBB;` or `!P<idx>=<RRGGBB>;`.
+The form `!P<idx><RRGGBB>;` is invalid and should be rejected.
 
 Only line 1 enforces the `!V…; !TW…; !NL…;` prefix; other lines can carry the
 optional metadata above (including SAUCE tags) or simply style sequences.
@@ -156,6 +164,30 @@ B<RRGGBB>   Background RGB (hex)
 - `FF0080`: Foreground RGB(255, 0, 128) - pink
 - `B00FF00`: Background RGB(0, 255, 0) - green
 
+#### Palette Colors
+
+Palette entries are declared as metadata and referenced by index in styles.
+
+```
+!P<idx>=RRGGBB;
+!P<idx>=<RRGGBB>;
+```
+
+- `idx` is a non-negative integer, unbounded, and independent from `F<index>` / `B<index>`.
+- `!P<idx>=RRGGBB;` is recommended because it is compact and unambiguous.
+- `!P<idx>=<RRGGBB>;` is allowed.
+- `!P<idx><RRGGBB>;` is invalid and should be rejected.
+- Palette entries may appear on any line, like other metadata.
+
+Use palette entries in style sequences:
+
+```
+FP<idx>   Foreground palette color
+BP<idx>   Background palette color
+```
+
+If a style references an undefined palette index, parsers must raise an error.
+
 #### Link Hover Colors
 
 Use the same formats as foreground/background but prefix with `HF` (hover
@@ -223,10 +255,13 @@ Click me | !V1; !TW80/80; !NL101; 1:HL:<https://example.com>, FG, HFY, HBk; 9:Hl
 
 ### Metadata (two families)
 
-- Simple key/value: `!KEYvalue;` (no colon). Example: `!TW80/120;`, `!NL25;`,
-  `!V1.0.0;`.
-- SAUCE tags (values wrapped in `< >`):
-  `!ST<title>; !SA<author>; !SG<group>; !SD<YYYYMMDD>; !SF<font>; !SI;`
+- Simple key/value: `!KEYvalue;` or `!KEY=value;` (no colon). Example:
+  `!TW80/120;`, `!NL25;`, `!V1.0.0;`.
+- SAUCE tags (values wrapped in `< >`, optional `=`):
+  `!ST<title>; !ST=<title>; !SA<author>; !SA=<author>; !SG<group>; !SD<YYYYMMDD>;`
+  `!SF<font>; !SI;`
+- Palette entries: `!P<idx>=RRGGBB;` (recommended) or `!P<idx>=<RRGGBB>;` for
+  `FP`/`BP` usage. `!P<idx><RRGGBB>;` is invalid.
 - Optional labels can appear on any line; only `!V`, `!TW`, `!NL` are mandatory
   on the first line.
 
@@ -239,7 +274,8 @@ Click me | !V1; !TW80/80; !NL101; 1:HL:<https://example.com>, FG, HFY, HBk; 9:Hl
 ### Style codes (recap)
 
 - Colors: `Fk/FR`… for 16 colors (foreground), `Bk`… for background; indexed
-  `F123`/`B200`; RGB `F00FF00`/`BFF0080`; hover `HF…`/`HB…`.
+  `F123`/`B200`; RGB `F00FF00`/`BFF0080`; palette `FP<idx>`/`BP<idx>` (declared
+  with `!P<idx>=RRGGBB;` or `!P<idx>=<RRGGBB>;`); hover `HF…`/`HB…`.
 - Effects: `EM` (dim), `EI` (italic), `EU` (underline), `EB` (blink), `ER`
   (reverse); lowercase versions disable (`Em`/`Ei`/`Eu`/`Eb`/`Er`).
 - Links: `HL:<url>` starts a link (URL inside `< >`); `Hl` ends it. Combine with
@@ -253,10 +289,14 @@ Click me | !V1; !TW80/80; !NL101; 1:HL:<https://example.com>, FG, HFY, HBk; 9:Hl
 2. On the first line, read `!V…; !TW…; !NL…;` in that order; they must be
    present.
 3. Split the right part on `;` (semicolon + space) to list entries. Each entry
-   starting with `!` is metadata; others are style sequences.
-4. For a style sequence, split on `:` (no spaces). Left = position; right =
+   starting with `!` is metadata; others are style sequences (metadata may use an
+   optional `=` between key and value).
+4. For `!P<idx>=RRGGBB` or `!P<idx>=<RRGGBB>` entries, store the palette index
+   and color; reject `!P<idx><RRGGBB>`.
+5. For a style sequence, split on `:` (no spaces). Left = position; right =
    styles split on `,` (comma + space).
-5. Apply styles in order; `R0` resets state. Hover colors persist until changed.
+6. Apply styles in order; `R0` resets state. Hover colors persist until changed.
+   `FP<idx>`/`BP<idx>` must resolve to a defined palette entry or raise an error.
 
 ## Annotated Complete Example
 
